@@ -120,6 +120,20 @@ M7 多音轉譜比較 → M8 線條分離（依時間逐步分配音符，成本
 - `uv run pytest`：量化、TAB 把位（弦和格在範圍內、移動合理）、MusicXML 結構，以及用合成音檔跑的端對端測試。
 - 本機（使用者執行）：用 YouTube 連結跑完整流程，在 MuseScore 4 開 `bass.musicxml`，確認是 4 線 TAB、有符桿、播放音高正確；`bass.mid` 拉進 Logic 和 `bass.wav` 對齊。
 
+## 實作備註（階段一）
+
+和上面計畫不同、或計畫沒寫到的細節：
+
+- **Basic Pitch** 用套件內附的 ONNX 模型 + onnxruntime（Mac 和 Linux 一致），不裝 TensorFlow / CoreML。`melodia_trick` 預設關閉。
+- **Demucs** `htdemucs_ft` 是 4 個子模型的組合，只跑負責貝斯的那一個，`no_bass = 原曲 − 貝斯`，速度快 4 倍。MPS 失敗時自動退回 CPU。
+- **貝斯後處理**（`transcribe/mono.py`）：泛音假音符刪除、pYIN + 頻譜八度校正、短視窗頻譜通量修正 onset、碎片合併（用各泛音能量是否重新上升判斷是否重新撥弦）、補回漏掉的音、大鼓漏音過濾。
+- **MIDI 寫檔**用 `mido`（pretty_midi 的底層），因為 pretty_midi 不能直接寫每拍一個 tempo 事件；測試用 pretty_midi 讀回驗證對齊。
+  音符時間預設用原始演奏時間（和音訊完全對齊），網頁可勾選改用量化時間。
+- **節拍格**：0 秒到第一拍之間補成弱起小節，所以 MIDI 第 0 tick = 音訊第 0 秒，DAW 裡的小節線也會落在強拍上。
+- **調號**偵測放在 `key.py`（music21）。
+- **TAB 把位**：DP 狀態是（弦, 格, 食指把位），一指一格範圍內不用換把；休止符或空弦期間換把比較便宜。
+- **MusicXML**：音高寫實際發聲音高、不加移調；MuseScore 4 匯入後是 4 線 TAB（tab Common 樣式：符桿和符槓畫在 TAB 下方），樂器自動對應 Electric Bass。測試用 MusicXML 4.0 schema 驗證。
+
 ## 注意事項
 
 - YouTube 下載僅供個人練習與研究使用。
