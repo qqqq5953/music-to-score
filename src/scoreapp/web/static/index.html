@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>music-to-score｜貝斯轉譜</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc;
+    --accent: #c2410c; --accent-soft: #fff1e8; --ok: #15803d; --err: #b91c1c; --bar: #ece9e3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161616; --card: #202022; --text: #f2f2f2; --muted: #a0a0a6; --line: #333336;
+      --accent: #fb923c; --accent-soft: #3a2416; --ok: #4ade80; --err: #f87171; --bar: #2c2c2f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 18px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  label.field { display: block; font-weight: 600; margin-bottom: 6px; }
+  input[type=text] { width: 100%; padding: 12px 14px; font-size: 16px; border-radius: 10px;
+                     border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .or { text-align: center; color: var(--muted); margin: 14px 0; font-size: 14px; }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 26px 16px; text-align: center;
+          color: var(--muted); cursor: pointer; transition: .15s; }
+  .drop.over, .drop:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .drop strong { color: var(--text); }
+  .opts { margin: 16px 0 4px; font-size: 14px; color: var(--muted); }
+  .opts label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+  button.primary { margin-top: 14px; width: 100%; padding: 13px; font-size: 17px; font-weight: 700;
+                   border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  .bar { height: 12px; background: var(--bar); border-radius: 6px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  .status { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .error { color: var(--err); white-space: pre-wrap; }
+  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .info div { background: var(--bg); border-radius: 10px; padding: 8px 12px; }
+  .info small { display: block; color: var(--muted); font-size: 12px; }
+  .files { display: grid; gap: 8px; }
+  a.file { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 14px;
+           border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: var(--text); }
+  a.file:hover { border-color: var(--accent); background: var(--accent-soft); }
+  a.file span { color: var(--muted); font-size: 13px; text-align: right; }
+  .hist-item { border-top: 1px solid var(--line); padding: 12px 0; }
+  .hist-item:first-of-type { border-top: 0; }
+  .hist-item .links { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
+  .hist-item a { color: var(--accent); }
+  .hist-item .meta { color: var(--muted); font-size: 13px; }
+  .hidden { display: none; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎸 貝斯轉譜</h1>
+  <p class="sub">貼上 YouTube 連結或拖入音檔，產生 4 弦貝斯 TAB 譜、MIDI、貝斯分軌和去貝斯伴奏。</p>
+
+  <section class="card" id="input-card">
+    <label class="field" for="url">YouTube 連結</label>
+    <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+    <div class="or">或</div>
+    <div class="drop" id="drop" tabindex="0">
+      <div id="drop-text"><strong>把音檔拖到這裡</strong>，或點一下選擇檔案<br><small>mp3、wav、m4a、flac</small></div>
+      <input type="file" id="file" accept=".mp3,.wav,.m4a,.flac,.aac,.ogg,.aiff,.aif" hidden>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="quantized">
+        <span>MIDI 使用量化後的時間（和樂譜一樣對齊格線）。<br>不勾選：保留原始演奏時間，和原曲音訊完全對齊。</span></label>
+    </div>
+    <button class="primary" id="start">開始轉譜</button>
+  </section>
+
+  <section class="card hidden" id="progress-card">
+    <h2 id="job-label">處理中</h2>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="status"><span id="message">排隊中…</span><span id="elapsed"></span></div>
+    <p class="error hidden" id="error"></p>
+  </section>
+
+  <section class="card hidden" id="result-card">
+    <h2 id="result-title">完成</h2>
+    <div class="info" id="info"></div>
+    <div class="files" id="files"></div>
+  </section>
+
+  <section class="card" id="history-card">
+    <h2>之前的結果</h2>
+    <div id="history"><p class="sub">還沒有轉過任何歌。</p></div>
+  </section>
+
+  <footer>第一次轉譜時會下載分軌模型（約 300MB），會比較久。YouTube 下載僅供個人練習使用。</footer>
+</main>
+
+<script>
+const FILE_DESC = {
+  "bass.musicxml": ["貝斯 TAB 譜", "用 MuseScore 4 開啟"],
+  "bass.mid": ["貝斯 MIDI", "拉進 Logic / Cubase（含 tempo map）"],
+  "no_bass.wav": ["去貝斯伴奏", "跟著練習用"],
+  "bass.wav": ["貝斯分軌", "聽不清楚時對照用"],
+  "mix.wav": ["原曲", "放進 DAW 和 MIDI 對齊用"],
+};
+const MAJOR = {"-7":"C♭","-6":"G♭","-5":"D♭","-4":"A♭","-3":"E♭","-2":"B♭","-1":"F","0":"C","1":"G","2":"D","3":"A","4":"E","5":"B","6":"F♯","7":"C♯"};
+const MINOR = {"-7":"A♭","-6":"E♭","-5":"B♭","-4":"F","-3":"C","-2":"G","-1":"D","0":"A","1":"E","2":"B","3":"F♯","4":"C♯","5":"G♯","6":"D♯","7":"A♯"};
+const $ = (id) => document.getElementById(id);
+let chosenFile = null, timer = null, started = 0;
+
+function keyName(k) {
+  if (!k) return "–";
+  const name = (k.mode === "minor" ? MINOR : MAJOR)[String(k.fifths)];
+  const acc = k.fifths === 0 ? "無升降" : (k.fifths > 0 ? `${k.fifths} 個升記號` : `${-k.fifths} 個降記號`);
+  return `${name} ${k.mode === "minor" ? "小調" : "大調"}（${acc}）`;
+}
+function link(folder, name) {
+  return `/api/results/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); });
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+$("file").addEventListener("change", (e) => { if (e.target.files.length) setFile(e.target.files[0]); });
+$("url").addEventListener("input", () => { if ($("url").value.trim()) setFile(null); });
+$("url").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+
+function setFile(f) {
+  chosenFile = f;
+  $("drop-text").innerHTML = f
+    ? `<strong>${esc(f.name)}</strong><br><small>${(f.size / 1048576).toFixed(1)} MB・點一下換檔案</small>`
+    : `<strong>把音檔拖到這裡</strong>，或點一下選擇檔案<br><small>mp3、wav、m4a、flac</small>`;
+  if (f) $("url").value = "";
+}
+
+$("start").addEventListener("click", start);
+
+async function start() {
+  const url = $("url").value.trim();
+  if (!url && !chosenFile) { alert("請貼上 YouTube 連結或選擇音檔"); return; }
+  const form = new FormData();
+  if (chosenFile) form.append("file", chosenFile); else form.append("url", url);
+  form.append("midi_quantized", $("quantized").checked ? "true" : "false");
+  $("start").disabled = true;
+  $("result-card").classList.add("hidden");
+  $("error").classList.add("hidden");
+  $("progress-card").classList.remove("hidden");
+  $("job-label").textContent = chosenFile ? chosenFile.name : url;
+  $("message").textContent = chosenFile ? "上傳中…" : "送出中…";
+  $("bar").style.width = "0%";
+  try {
+    const res = await fetch("/api/jobs", { method: "POST", body: form });
+    const job = await res.json();
+    if (!res.ok) throw new Error(job.detail || "送出失敗");
+    started = Date.now();
+    poll(job.id);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function poll(id) {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    let job;
+    try {
+      job = await (await fetch(`/api/jobs/${id}`)).json();
+    } catch { poll(id); return; }
+    $("bar").style.width = `${Math.round(job.progress * 100)}%`;
+    $("message").textContent = `${job.message}（${Math.round(job.progress * 100)}%）`;
+    const sec = Math.round((Date.now() - started) / 1000);
+    $("elapsed").textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    if (job.status === "done") { showResult(job); loadHistory(); }
+    else if (job.status === "error") showError(job.error);
+    else poll(id);
+  }, 1000);
+}
+
+function showError(msg) {
+  $("error").textContent = msg;
+  $("error").classList.remove("hidden");
+  $("message").textContent = "失敗";
+  $("start").disabled = false;
+}
+
+function showResult(job) {
+  $("start").disabled = false;
+  $("progress-card").classList.add("hidden");
+  $("result-card").classList.remove("hidden");
+  $("result-title").textContent = `完成：${job.title}`;
+  const i = job.info || {};
+  $("info").innerHTML = [
+    ["速度", i.tempo_bpm ? `${i.tempo_bpm} BPM` : "–"],
+    ["拍號", i.time_signature || "–"],
+    ["調號", keyName(i.key)],
+    ["音符數", i.notes ?? "–"],
+  ].map(([k, v]) => `<div><small>${k}</small>${esc(v)}</div>`).join("");
+  $("files").innerHTML = job.files.map((f) => {
+    const [title, desc] = FILE_DESC[f] || [f, ""];
+    return `<a class="file" href="${link(job.folder, f)}"><strong>${title}<br><small>${f}</small></strong><span>${desc}</span></a>`;
+  }).join("");
+}
+
+async function loadHistory() {
+  try {
+    const items = await (await fetch("/api/results")).json();
+    if (!items.length) return;
+    $("history").innerHTML = items.map((r) => `
+      <div class="hist-item">
+        <strong>${esc(r.info.title || r.folder)}</strong>
+        <div class="meta">${r.info.tempo_bpm} BPM・${r.info.time_signature}・${keyName(r.info.key)}</div>
+        <div class="links">${r.files.map((f) => `<a href="${link(r.folder, f)}">${(FILE_DESC[f] || [f])[0]}</a>`).join("")}</div>
+      </div>`).join("");
+  } catch {}
+}
+loadHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# 輸出與快取
+output/
+.cache/
+models/
+
+# macOS
+.DS_Store
