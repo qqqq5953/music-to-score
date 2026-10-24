@@ -68,6 +68,12 @@ def download_youtube(url: str, work_dir: Path) -> tuple[Path, str]:
         "ffmpeg_location": ffmpeg_exe(),
         "overwrites": True,
     }
+    try:  # YouTube 解析需要 JavaScript 執行環境；用 uv 一起裝進來的 deno
+        import deno
+
+        opts["js_runtimes"] = {"deno": {"path": deno.find_deno_bin()}}
+    except (ImportError, OSError, RuntimeError):
+        pass
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))

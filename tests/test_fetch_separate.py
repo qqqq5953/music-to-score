@@ -62,3 +62,38 @@ def test_separate_bass_writes_stems_that_sum_to_mix(tmp_path, monkeypatch):
     assert bass.shape == no_bass.shape == orig.shape
     assert np.max(np.abs(bass + no_bass - orig)) < 2e-3
     assert progress and all(0 <= p <= 1 for p in progress)
+
+
+def test_youtube_download_options(tmp_path, monkeypatch):
+    """不連網：檢查傳給 yt-dlp 的設定（deno 路徑、ffmpeg、只抓單一影片），以及下載後轉成 wav。"""
+    import yt_dlp
+
+    captured = {}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            captured.update(opts)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def extract_info(self, url, download):
+            sr = 44100
+            t = np.arange(sr // 2) / sr
+            sf.write(tmp_path / "work" / "_download" / "download.wav", 0.2 * np.sin(2 * np.pi * 220 * t), sr)
+            return {"title": "Song / Title", "ext": "wav"}
+
+        def prepare_filename(self, info):
+            return str(tmp_path / "work" / "_download" / "download.wav")
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeYDL)
+    got = fetch.fetch("https://www.youtube.com/watch?v=abc", tmp_path / "work")
+    assert got.title == "Song / Title"
+    assert sf.info(str(got.wav_path)).samplerate == 44100
+    assert captured["noplaylist"] is True
+    assert captured["ffmpeg_location"] == fetch.ffmpeg_exe()
+    assert captured["js_runtimes"]["deno"]["path"].endswith("deno")
+    assert not (tmp_path / "work" / "_download").exists()
