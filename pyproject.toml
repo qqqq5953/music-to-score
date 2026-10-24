@@ -56,3 +56,7 @@ override-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning:basic_pitch.*",
+]
