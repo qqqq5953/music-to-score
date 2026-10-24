@@ -28,7 +28,11 @@ dependencies = [
 scoreapp = "scoreapp.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "lxml>=6.1.3",
+]
 
 [build-system]
 requires = ["hatchling"]

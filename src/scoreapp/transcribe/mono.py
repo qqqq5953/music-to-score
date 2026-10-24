@@ -36,7 +36,7 @@ class MonoParams:
     melodia_trick: bool = False
     octave_correction: bool = True
     refine_onsets: bool = True
-    onset_search_before: float = 0.08  # 往前找起音的範圍（秒）
+    onset_search_before: float = 0.12  # 往前找起音的範圍（秒）
     onset_search_after: float = 0.08
     merge_gap_sec: float = 0.03  # 同音高、間隔這麼小且沒有新起音 → 合併
     recover_missed: bool = True  # 用起音包絡 + pYIN 補回 Basic Pitch 漏掉的音
@@ -253,12 +253,17 @@ def harmonic_reattack(feat: AudioFeatures, pitch: int, t: float, not_before: flo
     return float(np.median(ratios)) if ratios else 1.0
 
 
-def _onset_peak(feat: AudioFeatures, t0: float, t1: float) -> tuple[float, float]:
-    """回傳 [t0, t1] 之間起音包絡的峰值（時間, 強度）。"""
+def _onset_peak(feat: AudioFeatures, t0: float, t1: float, center: float | None = None) -> tuple[float, float]:
+    """回傳 [t0, t1] 之間起音包絡的峰值（時間, 強度）。
+
+    有 center 的話，離 center 越遠的峰值打越多折扣（遠處的鼓聲不要蓋過近處比較弱的起音）。
+    """
     i0, i1 = np.searchsorted(feat.onset_times, [t0, t1])
     if i1 <= i0:
         return (t0 + t1) / 2, 0.0
-    i = i0 + int(np.argmax(feat.onset_env[i0:i1]))
+    env = feat.onset_env[i0:i1]
+    score = env if center is None else env * np.exp(-np.abs(feat.onset_times[i0:i1] - center) / 0.08)
+    i = i0 + int(np.argmax(score))
     return float(feat.onset_times[i]), float(feat.onset_env[i])
 
 
@@ -284,7 +289,7 @@ def refine_onsets(notes: list[NoteEvent], feat: AudioFeatures, params: MonoParam
         t0 = max(n.onset - params.onset_search_before, last + 0.04)
         t1 = min(n.onset + params.onset_search_after, nxt - 0.03)
         if t1 > t0:
-            t, strength = _onset_peak(feat, t0, t1)
+            t, strength = _onset_peak(feat, t0, t1, center=n.onset)
             if _is_clear_peak(feat, t0, t1, strength, 0.15):
                 # 起音在這個音快結束的地方 → 這段是提早出現的碎片，之後會和主音合併
                 n.onset = t
@@ -316,6 +321,30 @@ def merge_fragments(notes: list[NoteEvent], feat: AudioFeatures | None, params: 
                 if own < 0.5 * main:
                     out[-1] = n
                     continue
+        out.append(n)
+    return out
+
+
+def validate_overlapping_onsets(notes: list[NoteEvent], feat: AudioFeatures) -> list[NoteEvent]:
+    """前一個（不同音高的）音還在響時就冒出來的音，要有證據才算數。
+
+    Basic Pitch 常在下一個音真正開始前 100～200ms 就冒出一段小聲的「假開頭」，
+    單聲部整理時會把前一個音截斷。
+    - pYIN 聽到的還是前一個音 → 刪掉。
+    - pYIN 聽到新的音高（hammer-on、滑音沒有起音，但音高會變）→ 保留。
+    - pYIN 不確定 → 有明顯的起音才保留。
+    """
+    notes = sorted(notes, key=lambda n: n.onset)
+    out: list[NoteEvent] = []
+    for n in notes:
+        prev = out[-1] if out else None
+        if prev is not None and prev.pitch != n.pitch and prev.offset > n.onset + 0.02:
+            heard = _stable_pitch(feat, n.onset + 0.015, min(n.offset, n.onset + 0.08))
+            if heard == prev.pitch:
+                continue  # pYIN 聽到的還是前一個音
+            _, strength = _onset_peak(feat, n.onset - 0.02, n.onset + 0.02)
+            if heard != n.pitch and not _is_clear_peak(feat, n.onset, n.onset, strength, 0.15):
+                continue
         out.append(n)
     return out
 
@@ -445,6 +474,9 @@ def postprocess(notes: list[NoteEvent], feat: AudioFeatures | None, params: Mono
     if feat is not None and params.refine_onsets:
         notes = refine_onsets(notes, feat, params)
     notes = merge_fragments(notes, feat, params)
+    if feat is not None:
+        notes = validate_overlapping_onsets(notes, feat)
+        notes = merge_fragments(notes, feat, params)
     if feat is not None and params.recover_missed:
         notes = recover_missed_notes(notes, feat, params)
     if feat is not None and params.kick_filter:
