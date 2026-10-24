@@ -1,0 +1,58 @@
+[project]
+name = "scoreapp"
+version = "0.1.0"
+description = "把歌曲轉成貝斯 TAB / MIDI（之後擴充到管弦樂多聲部）"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy>=1.26,<2.2",
+    "scipy>=1.11",
+    "soundfile>=0.12",
+    "librosa>=0.10.2",
+    "pretty_midi>=0.2.10",
+    "music21>=9.1",
+    "yt-dlp>=2025.1.1",
+    "imageio-ffmpeg>=0.5",
+    "torch>=2.11,<2.12",
+    "torchaudio>=2.11,<2.12",  # 版本要和 torch 對齊
+    "demucs>=4.1.0",
+    "basic-pitch>=0.4.0",
+    "onnxruntime>=1.18",
+    "beat-this>=1.1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+scoreapp = "scoreapp.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scoreapp"]
+
+[tool.uv]
+# 只用 uv 自己下載的 Python，不碰 macOS 內建的 python3（會跳出安裝開發者工具的視窗）。
+python-preference = "only-managed"
+# 只支援 Apple Silicon Mac（使用者本機）和 Linux（雲端測試）。
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux'",
+]
+# Basic Pitch 預設會拉 TensorFlow / CoreML，我們統一用它內附的 ONNX 模型 + onnxruntime，
+# 這樣 Mac 和 Linux 行為一致，也省下約 1GB 空間。
+override-dependencies = [
+    "tensorflow; sys_platform == 'never'",
+    "tensorflow-macos; sys_platform == 'never'",
+    "coremltools; sys_platform == 'never'",
+    "tflite-runtime; sys_platform == 'never'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
